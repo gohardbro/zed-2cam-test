@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
 
-# --- Depth 처리 함수--- clip_range 범위를 크게 할수록 넓게 표현
+# --- Depth 처리 함수 ---
 def process_depth_image(depth_np, clip_range=(0, 1000), colormap=cv2.COLORMAP_JET):
     depth_np = np.nan_to_num(depth_np, nan=0.0, posinf=0.0, neginf=0.0)
     depth_np_clipped = np.clip(depth_np, clip_range[0], clip_range[1])
@@ -95,7 +95,7 @@ class DualZEDViewer(QWidget):
 
         self.clip_max_box = QSpinBox()
         self.clip_max_box.setRange(0, 10000)
-        self.clip_max_box.setValue(1000)
+        self.clip_max_box.setValue(3000)
         self.clip_max_box.setPrefix("Max: ")
 
         self.camera_selector = QComboBox()
@@ -122,41 +122,52 @@ class DualZEDViewer(QWidget):
         config_layout.addWidget(self.clip_max_box, 2, 1)
         config_layout.addWidget(self.camera_selector, 2, 2)
 
-        image_layout = QHBoxLayout()
-        image_layout.addWidget(self.image_label1, stretch=1)
-        image_layout.addWidget(self.image_label2, stretch=1)
-
-        layout = QVBoxLayout()
-        layout.addLayout(config_layout)
-        layout.addWidget(self.start_button)
-        layout.addLayout(image_layout)
-        self.setLayout(layout)
+        self.layout_main = QVBoxLayout()
+        self.layout_main.addLayout(config_layout)
+        self.layout_main.addWidget(self.start_button)
+        self.setLayout(self.layout_main)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_images)
 
     def start_viewing(self):
+        # 기존 이미지 레이아웃 제거
+        if hasattr(self, 'image_layout'):
+            while self.image_layout.count():
+                item = self.image_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+            self.layout_main.removeItem(self.image_layout)
+
+        self.image_layout = QHBoxLayout()
+        selected_mode = self.camera_selector.currentText()
+
         clip_min = self.clip_min_box.value()
         clip_max = self.clip_max_box.value()
+        self.viewer1.set_clip_range(clip_min, clip_max)
+        self.viewer2.set_clip_range(clip_min, clip_max)
+
         self.viewer1.set_resolution(self.res_combo1.currentText())
         self.viewer2.set_resolution(self.res_combo2.currentText())
         self.viewer1.set_fps(self.fps_combo1.currentText())
         self.viewer2.set_fps(self.fps_combo2.currentText())
-        self.viewer1.set_clip_range(clip_min, clip_max)
-        self.viewer2.set_clip_range(clip_min, clip_max)
 
-        selected_mode = self.camera_selector.currentText()
-
-        if selected_mode in ["Both Cameras", "Camera 1 Only"]:
+        if selected_mode == "Both Cameras":
             self.viewer1.start()
-        else:
+            self.viewer2.start()
+            self.image_layout.addWidget(self.image_label1, stretch=1)
+            self.image_layout.addWidget(self.image_label2, stretch=1)
+        elif selected_mode == "Camera 1 Only":
+            self.viewer1.start()
+            self.image_layout.addWidget(self.image_label1, stretch=1)
+            self.image_label2.clear()
+        elif selected_mode == "Camera 2 Only":
+            self.viewer2.start()
+            self.image_layout.addWidget(self.image_label2, stretch=1)
             self.image_label1.clear()
 
-        if selected_mode in ["Both Cameras", "Camera 2 Only"]:
-            self.viewer2.start()
-        else:
-            self.image_label2.clear()
-
+        self.layout_main.addLayout(self.image_layout)
         self.timer.start(30)
 
     def update_images(self):
