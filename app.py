@@ -4,7 +4,7 @@ import numpy as np
 import pyzed.sl as sl
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QComboBox, QPushButton,
-    QHBoxLayout, QVBoxLayout, QGridLayout, QSizePolicy
+    QHBoxLayout, QVBoxLayout, QGridLayout, QSizePolicy, QSpinBox
 )
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
@@ -39,9 +39,12 @@ class ZEDCameraViewer:
     def set_fps(self, fps_text):
         self.init_params.camera_fps = int(fps_text)
 
+    def set_clip_range(self, clip_min, clip_max):
+        self.clip_range = (clip_min, clip_max)
+
     def start(self):
         if self.camera.open(self.init_params) != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError("\uce74\uba54\ub77c \uc5f4\uae30 \uc2e4\ud328")
+            raise RuntimeError("카메라 열기 실패")
         self.running = True
 
     def stop(self):
@@ -64,11 +67,8 @@ class DualZEDViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ZED Dual Depth Viewer")
-        
-        # window size
         self.setMinimumSize(400, 300)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
 
         self.viewer1 = ZEDCameraViewer()
         self.viewer2 = ZEDCameraViewer()
@@ -88,6 +88,19 @@ class DualZEDViewer(QWidget):
             self.fps_combo1.addItem(fps)
             self.fps_combo2.addItem(fps)
 
+        self.clip_min_box = QSpinBox()
+        self.clip_min_box.setRange(0, 10000)
+        self.clip_min_box.setValue(0)
+        self.clip_min_box.setPrefix("Min: ")
+
+        self.clip_max_box = QSpinBox()
+        self.clip_max_box.setRange(0, 10000)
+        self.clip_max_box.setValue(1000)
+        self.clip_max_box.setPrefix("Max: ")
+
+        self.camera_selector = QComboBox()
+        self.camera_selector.addItems(["Both Cameras", "Camera 1 Only", "Camera 2 Only"])
+
         self.image_label1 = QLabel()
         self.image_label2 = QLabel()
         for lbl in [self.image_label1, self.image_label2]:
@@ -105,6 +118,9 @@ class DualZEDViewer(QWidget):
         config_layout.addWidget(self.label2, 1, 0)
         config_layout.addWidget(self.res_combo2, 1, 1)
         config_layout.addWidget(self.fps_combo2, 1, 2)
+        config_layout.addWidget(self.clip_min_box, 2, 0)
+        config_layout.addWidget(self.clip_max_box, 2, 1)
+        config_layout.addWidget(self.camera_selector, 2, 2)
 
         image_layout = QHBoxLayout()
         image_layout.addWidget(self.image_label1, stretch=1)
@@ -120,21 +136,41 @@ class DualZEDViewer(QWidget):
         self.timer.timeout.connect(self.update_images)
 
     def start_viewing(self):
+        clip_min = self.clip_min_box.value()
+        clip_max = self.clip_max_box.value()
         self.viewer1.set_resolution(self.res_combo1.currentText())
         self.viewer2.set_resolution(self.res_combo2.currentText())
         self.viewer1.set_fps(self.fps_combo1.currentText())
         self.viewer2.set_fps(self.fps_combo2.currentText())
-        self.viewer1.start()
-        self.viewer2.start()
+        self.viewer1.set_clip_range(clip_min, clip_max)
+        self.viewer2.set_clip_range(clip_min, clip_max)
+
+        selected_mode = self.camera_selector.currentText()
+
+        if selected_mode in ["Both Cameras", "Camera 1 Only"]:
+            self.viewer1.start()
+        else:
+            self.image_label1.clear()
+
+        if selected_mode in ["Both Cameras", "Camera 2 Only"]:
+            self.viewer2.start()
+        else:
+            self.image_label2.clear()
+
         self.timer.start(30)
 
     def update_images(self):
-        img1 = self.viewer1.get_depth_image()
-        img2 = self.viewer2.get_depth_image()
-        if img1 is not None:
-            self.image_label1.setPixmap(self.cv_to_pixmap(img1))
-        if img2 is not None:
-            self.image_label2.setPixmap(self.cv_to_pixmap(img2))
+        selected_mode = self.camera_selector.currentText()
+
+        if selected_mode in ["Both Cameras", "Camera 1 Only"]:
+            img1 = self.viewer1.get_depth_image()
+            if img1 is not None:
+                self.image_label1.setPixmap(self.cv_to_pixmap(img1))
+
+        if selected_mode in ["Both Cameras", "Camera 2 Only"]:
+            img2 = self.viewer2.get_depth_image()
+            if img2 is not None:
+                self.image_label2.setPixmap(self.cv_to_pixmap(img2))
 
     def cv_to_pixmap(self, img):
         rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
