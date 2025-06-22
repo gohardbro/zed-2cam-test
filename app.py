@@ -9,16 +9,28 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
 
+# --- Depth 처리 함수--- clip_range 범위를 크게 할수록 넓게 표현
+def process_depth_image(depth_np, clip_range=(0, 1000), colormap=cv2.COLORMAP_JET):
+    depth_np = np.nan_to_num(depth_np, nan=0.0, posinf=0.0, neginf=0.0)
+    depth_np_clipped = np.clip(depth_np, clip_range[0], clip_range[1])
+    depth_normalized = cv2.normalize(depth_np_clipped, None, 0, 255, cv2.NORM_MINMAX)
+    depth_8u = depth_normalized.astype(np.uint8)
+    depth_color = cv2.applyColorMap(depth_8u, colormap)
+    return depth_color
+
 class ZEDCameraViewer:
-    def __init__(self):
+    def __init__(self, clip_range=(0, 5000), colormap=cv2.COLORMAP_JET):
         self.camera = sl.Camera()
         self.init_params = sl.InitParameters()
         self.runtime = sl.RuntimeParameters()
         self.depth_mat = sl.Mat()
         self.running = False
+        self.clip_range = clip_range
+        self.colormap = colormap
 
     def set_resolution(self, resolution_text):
         resolutions = {
+            "HD1080": sl.RESOLUTION.HD1080,
             "HD720": sl.RESOLUTION.HD720,
             "VGA": sl.RESOLUTION.VGA
         }
@@ -29,7 +41,7 @@ class ZEDCameraViewer:
 
     def start(self):
         if self.camera.open(self.init_params) != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError("카메라 열기 실패")
+            raise RuntimeError("\uce74\uba54\ub77c \uc5f4\uae30 \uc2e4\ud328")
         self.running = True
 
     def stop(self):
@@ -45,19 +57,18 @@ class ZEDCameraViewer:
             h, w = depth_np.shape[:2]
             if h == 0 or w == 0:
                 return None
-            depth_np = np.nan_to_num(depth_np, nan=0.0, posinf=0.0, neginf=0.0)
-            depth_np_clipped = np.clip(depth_np, 0, 5000)
-            depth_normalized = cv2.normalize(depth_np_clipped, None, 0, 255, cv2.NORM_MINMAX)
-            depth_8u = depth_normalized.astype(np.uint8)
-            depth_color = cv2.applyColorMap(depth_8u, cv2.COLORMAP_JET)
-            return depth_color
+            return process_depth_image(depth_np, self.clip_range, self.colormap)
         return None
 
 class DualZEDViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ZED Dual Depth Viewer")
-        #self.resize(1600, 800)  # 초기 창 크기 지정
+        
+        # window size
+        self.setMinimumSize(400, 300)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
 
         self.viewer1 = ZEDCameraViewer()
         self.viewer2 = ZEDCameraViewer()
@@ -67,7 +78,7 @@ class DualZEDViewer(QWidget):
 
         self.res_combo1 = QComboBox()
         self.res_combo2 = QComboBox()
-        for res in ["HD720", "VGA"]:
+        for res in ["HD1080", "HD720", "VGA"]:
             self.res_combo1.addItem(res)
             self.res_combo2.addItem(res)
 
