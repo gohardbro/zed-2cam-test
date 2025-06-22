@@ -3,13 +3,12 @@ import cv2
 import numpy as np
 import pyzed.sl as sl
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QComboBox,
-    QPushButton, QHBoxLayout, QVBoxLayout, QGridLayout
+    QApplication, QWidget, QLabel, QComboBox, QPushButton,
+    QHBoxLayout, QVBoxLayout, QGridLayout, QSizePolicy
 )
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
 
-# --- 카메라 뷰어 클래스 정의 ---
 class ZEDCameraViewer:
     def __init__(self):
         self.camera = sl.Camera()
@@ -46,31 +45,23 @@ class ZEDCameraViewer:
             h, w = depth_np.shape[:2]
             if h == 0 or w == 0:
                 return None
-
-            # 무한/NaN 거리 제거
             depth_np = np.nan_to_num(depth_np, nan=0.0, posinf=0.0, neginf=0.0)
-
-            # 거리를 0~5000mm로 클리핑 후 정규화
             depth_np_clipped = np.clip(depth_np, 0, 5000)
             depth_normalized = cv2.normalize(depth_np_clipped, None, 0, 255, cv2.NORM_MINMAX)
             depth_8u = depth_normalized.astype(np.uint8)
-
-            # 컬러맵 적용
             depth_color = cv2.applyColorMap(depth_8u, cv2.COLORMAP_JET)
             return depth_color
         return None
 
-
-# --- 메인 GUI 클래스 ---
 class DualZEDViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ZED Dual Depth Viewer")
+        #self.resize(1600, 800)  # 초기 창 크기 지정
 
         self.viewer1 = ZEDCameraViewer()
         self.viewer2 = ZEDCameraViewer()
 
-        # --- UI 구성 ---
         self.label1 = QLabel("Camera 1")
         self.label2 = QLabel("Camera 2")
 
@@ -88,25 +79,27 @@ class DualZEDViewer(QWidget):
 
         self.image_label1 = QLabel()
         self.image_label2 = QLabel()
+        for lbl in [self.image_label1, self.image_label2]:
+            lbl.setScaledContents(True)
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            lbl.setMinimumWidth(200)
 
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.start_viewing)
 
-        layout = QVBoxLayout()
         config_layout = QGridLayout()
-
         config_layout.addWidget(self.label1, 0, 0)
         config_layout.addWidget(self.res_combo1, 0, 1)
         config_layout.addWidget(self.fps_combo1, 0, 2)
-
         config_layout.addWidget(self.label2, 1, 0)
         config_layout.addWidget(self.res_combo2, 1, 1)
         config_layout.addWidget(self.fps_combo2, 1, 2)
 
         image_layout = QHBoxLayout()
-        image_layout.addWidget(self.image_label1)
-        image_layout.addWidget(self.image_label2)
+        image_layout.addWidget(self.image_label1, stretch=1)
+        image_layout.addWidget(self.image_label2, stretch=1)
 
+        layout = QVBoxLayout()
         layout.addLayout(config_layout)
         layout.addWidget(self.start_button)
         layout.addLayout(image_layout)
@@ -120,17 +113,13 @@ class DualZEDViewer(QWidget):
         self.viewer2.set_resolution(self.res_combo2.currentText())
         self.viewer1.set_fps(self.fps_combo1.currentText())
         self.viewer2.set_fps(self.fps_combo2.currentText())
-
-        # 카메라 순차 오픈 (기기 연결 순서대로)
         self.viewer1.start()
         self.viewer2.start()
-
         self.timer.start(30)
 
     def update_images(self):
         img1 = self.viewer1.get_depth_image()
         img2 = self.viewer2.get_depth_image()
-
         if img1 is not None:
             self.image_label1.setPixmap(self.cv_to_pixmap(img1))
         if img2 is not None:
@@ -143,7 +132,6 @@ class DualZEDViewer(QWidget):
         qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
         return QPixmap.fromImage(qt_image)
 
-# --- 앱 실행 ---
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     viewer = DualZEDViewer()
