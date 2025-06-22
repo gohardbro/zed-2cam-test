@@ -95,7 +95,7 @@ class DualZEDViewer(QWidget):
 
         self.clip_max_box = QSpinBox()
         self.clip_max_box.setRange(0, 10000)
-        self.clip_max_box.setValue(3000)
+        self.clip_max_box.setValue(5000)
         self.clip_max_box.setPrefix("Max: ")
 
         self.camera_selector = QComboBox()
